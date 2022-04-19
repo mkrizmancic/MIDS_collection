@@ -2,7 +2,7 @@ import math
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from milpMIDS import find_MIDS
+from milpMIDS import optimize
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
 		print(f"Searching MIDS for {n=}...", end='')
 		for _ in range(repeat):
 			G = nx.connected_watts_strogatz_graph(n, max(int(math.sqrt(n)), 2), 0.5)
-			sol, elps = find_MIDS(G, 'MIDS', outputFlag=0)
+			sol, elps = optimize(G, 'MIDS', outputFlag=0)
 			if sol:
 				avg += elps
 			else:
