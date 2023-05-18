@@ -8,7 +8,7 @@ from pathlib import Path
 from torch_geometric.data import InMemoryDataset, download_url
 from matplotlib import pyplot as plt
 
-import utils
+import Utilities.utils as utils
 
 
 # TODO: Automatically detect changes in the raw data and reprocess
