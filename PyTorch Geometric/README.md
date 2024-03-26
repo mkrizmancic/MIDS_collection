@@ -1,11 +1,9 @@
 ## About
-This package creates the dataset for Minimum Independent Dominating Set (MIDS) problem in PyTorch Geometric (PyG) format. The dataset consists of all possible variations of MIDS for all unique graphs with size (number of nodes) between 3 and 8 inclusive.
+This package creates the dataset for the Minimum Independent Dominating Set (MIDS) problem in PyTorch Geometric (PyG) format. The dataset consists of all possible variations of MIDS for all unique graphs with size (number of nodes) between 3 and 8 inclusive.
 
 ## Preparation
 ### Getting data
-If you have `git lfs` installed, the zip file with all the graphs will download automatically when you `git clone` or `git pull`. To install and set up `git lfs`, follow this [tutorial](https://docs.github.com/en/repositories/working-with-files/managing-large-files/installing-git-large-file-storage?platform=linux).
-
-When you have the zip, unpack it to `Dataset/raw/`.
+Data will be downloaded automatically when running or importing the dataset.
 
 ### Setting up the environment
 To avoid cluttering your environment with potentially incompatible packages, it is recommended to create a virtual environment and install packages within it. `setup_environment.sh` can do that for you. You can choose to install the CPU or GPU (CUDA) version of the library. Simple comment (out) the corresponding lines in the script. By default, the script will install the CPU version.
@@ -14,11 +12,12 @@ Position yourself in the `PyTorch Geometric` directory. From it, run `bash Utili
 
 ## Usage
 Running the `pyg_dataset.py` will do the following:
-* read the raw files from the `raw` directory,
-* compute the features for all nodes in each graph from the dataset,
-* save the result in PyG-readable format to the disk,
-* print out the information about the dataset,
-* _optionally_ print more detailed information about the randomly selected graph(s) from the dataset and plot them to visualize the MIDS. (To enable this feature, change the `num_graphs` argument in the `inspect_dataset` function call.)
+1. Download raw files if they don't exist on disk.1
+1. Read the raw files from the `raw` directory.
+1. Compute the features for all nodes in each graph from the dataset.
+1. Save the result in PyG-readable format to the disk.
+1. Print out the information about the dataset.
+1. _Optionally_ print more detailed information about the randomly selected graph(s) from the dataset and plot them to visualize the MIDS. (To enable this feature, change the `num_graphs` argument in the `inspect_dataset` function call.)
 
 Alternatively, you can import the dataset as you would normally do in PyG tutorials.
 
