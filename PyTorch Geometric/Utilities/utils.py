@@ -1,4 +1,3 @@
-import torch
 import numpy as np
 import networkx as nx
 from matplotlib import pyplot as plt
@@ -37,21 +36,21 @@ def check_MIDS(A, candidate, target_value):
     # Candidate set is not minimal
     if sum(candidate) > target_value:
         return False
-    
+
     # Candidate set is not dominating and independent
     if not all((A + np.eye(n)) @ candidate == 1):
         return False
-    
+
     if sum(candidate) < target_value:
         print("Somehow we found an even smaller MIDS.")
-    
+
     return True
 
 
 def test_find_MIDS():
-    graph_file = '/home/marko/PROJECTS/MIDS_collection/PyTorch Geometric/Dataset/raw/5_nodes/G5,5.txt'
+    graph_file = "/home/marko/PROJECTS/MIDS_collection/PyTorch Geometric/Dataset/raw/5_nodes/G5,5.txt"
     G = nx.read_edgelist(graph_file, nodetype=int)
     nx.draw(G, with_labels=True)
     plt.show()
-    
+
     print(find_MIDS(G))
