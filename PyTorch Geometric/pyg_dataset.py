@@ -64,16 +64,18 @@ class MIDSdataset(InMemoryDataset):
 
     def download(self):
         """Automatically download raw files if missing."""
-        # # TODO: Should check and download only missing files.
+        # TODO: Should check and download only missing files.
+
+        zip_file = Path(self.root) / "raw_data.zip"
+
+        # Delete the exising zip file.
+        zip_file.unlink(missing_ok=True)
+
         # Download the raw files using the helper function.
         download_url(raw_download_url, self.root, filename="raw_data.zip")
 
         # Unzip the downloaded files.
-        zip_file = Path(self.root) / "raw_data.zip"
         extract_zip(str(zip_file.resolve()), self.raw_dir)
-
-        # Delete the zip file.
-        # zip_file.unlink()
 
     def process(self):
         """Process the raw files into a graph dataset."""
