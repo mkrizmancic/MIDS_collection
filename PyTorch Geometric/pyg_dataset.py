@@ -98,7 +98,16 @@ class MIDSdataset(InMemoryDataset):
 
     def make_data(self, graph_file):
         """Create a PyG data object from a graph file."""
-        G = nx.read_edgelist(graph_file, nodetype=int)
+        # Load the graph from the file.
+        # We assume that the index of the nodes is the same as the node label.
+        # By default, networkx adds the nodes in the order they are found in the
+        # edgelist. For example, if the edgelist is [(1, 3), (2, 3)], the order
+        # of the nodes will be [1, 3, 2]. This interferes with the adjacency
+        # matrix ordering.
+        G_init = nx.read_edgelist(graph_file, nodetype=int)
+        G = nx.Graph()
+        G.add_nodes_from(sorted(G_init.nodes))
+        G.add_edges_from(G_init.edges)
 
         # Define features in use.
         feature_functions = {
