@@ -8,28 +8,30 @@ from milpMIDS import optimize
 
 
 def main():
-    repeat = 20
-    num_nodes = 30
+    repeat = 100
+    num_nodes = 6
     count = 0
     avg_dur = [0, 0]
 
     for i in range(repeat):
         print(f"Running experiment {i}...", end=' ')
         G = nx.connected_watts_strogatz_graph(num_nodes, max(int(math.sqrt(num_nodes)), 2), 0.5)
-        sol1, elps0, det0 = optimize(G, 'MIDS', goal='D', outputFlag=0)
-        sol2, elps1, det1 = optimize(G, 'MIDS', goal='J', outputFlag=0)
-        if sol1 and sol2 and len(sol1) == len(sol2):
+        solD, elpsD, detD = optimize(G, 'MIDS', goal='D', outputFlag=0)
+        solJ, elpsJ, detJ = optimize(G, 'MIDS', goal='J', outputFlag=0)
+        if solD and solJ and len(solD) == len(solJ):
+        # if solD and solJ and detD['goal_value'] <= detJ['goal_value']:
             print('SUCCESS')
             count += 1
         else:
             print('FAILED')
-            print(f"\t Goal 'D' solution: {len(sol1)}")
-            print(f"\t Goal 'J' solution: {len(sol2)}")
-            print(f"\t {det0}")
-            print(f"\t {det1}")
+            print(f"\t Goal 'D' solution: {len(solD)}")
+            print(f"\t Goal 'J' solution: {len(solJ)}")
+            print(f"\t {detD}")
+            print(f"\t {detJ}")
+            print(nx.to_numpy_array(G))
 
-        avg_dur[0] += elps0
-        avg_dur[1] += elps1
+        avg_dur[0] += elpsD
+        avg_dur[1] += elpsJ
 
     for i in range(len(avg_dur)):
         avg_dur[i] /= count

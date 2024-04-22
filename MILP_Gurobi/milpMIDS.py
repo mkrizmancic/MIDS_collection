@@ -79,7 +79,9 @@ def optimize(G, problem, goal='D', outputFlag=1):
     details = dict(goal=goal,
                    goal_value=model.getAttr('ObjVal'),
                    lenD=len(solution),
-                   valJ=sum(sum(A_[i, j] * D[k].X for j, k in enumerate(G.nodes)) for i in range(n)))
+                   valJ=sum(sum(A_[i, j] * D[k].X for j, k in enumerate(G.nodes)) for i in range(n)),
+                   A=A,
+                   d=solution)
 
     return solution, end - start, details
 
