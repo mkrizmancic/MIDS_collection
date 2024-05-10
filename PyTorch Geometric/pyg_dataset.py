@@ -113,7 +113,8 @@ class MIDSdataset(InMemoryDataset):
         feature_functions = {
             "degree": G.degree,
             "degree_centrality": nx.degree_centrality(G),
-            "betweenness_centrality": nx.betweenness_centrality(G)
+            "betweenness_centrality": nx.betweenness_centrality(G),
+            "disjunction_value": utils.disjunction_value(G),
         }
 
         # Compute and add features to the nodes in the graph.
@@ -177,7 +178,7 @@ def inspect_dataset(dataset, num_graphs=1):
 
 
 def main():
-    root = Path.cwd() / "Dataset"
+    root = Path(__file__).parent / "Dataset"
     raw_included_subdirs = None
 
     dataset = MIDSdataset(root, raw_included_subdirs=raw_included_subdirs)

@@ -56,6 +56,15 @@ def check_MIDS(A, candidate, target_value):
     return True
 
 
+def disjunction_value(G):
+    A = nx.to_numpy_array(G)
+    nodes = list(G.nodes)
+    n = A.shape[0]
+    s = np.linalg.lstsq(A + np.eye(n), np.ones(n), rcond=None)[0]
+    s = np.round(s, 2)
+    return {nodes[i]: s[i] for i in range(n)}
+
+
 def load_graph(graph_file):
     G_init = nx.read_edgelist(graph_file, nodetype=int)
     G = nx.Graph()
