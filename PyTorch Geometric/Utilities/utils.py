@@ -80,26 +80,32 @@ def test_find_MIDS():
         mids[nodes] = 1
         return mids
 
-    graph_files_dir = Path("/home/marko/PROJECTS/MIDS_collection/PyTorch Geometric/Dataset/raw/")
+    graph_files_dir = Path("/home/marko/PROJECTS/MIDS_collection/PyTorch Geometric/Dataset/raw/5_nodes")
     for graph_file in graph_files_dir.glob("*.txt"):
-        # print(graph_file.stem)
+        print(graph_file.stem)
         # if graph_file.stem != "G8,1437":
         #     continue
         G = load_graph(graph_file)
         # nx.draw(G, with_labels=True)
         # plt.show()
-        A = nx.to_numpy_array(G)
         possible_MIDS = find_MIDS(G)
-        for MIDS in possible_MIDS:
+        disj_val = disjunction_value(G)
+
+        len_MIDS = len(possible_MIDS[0])
+        top_nodes = [node for node in sorted(disj_val, key=lambda x: disj_val[x], reverse=True)][:len_MIDS]
+        ok = set(top_nodes) in set((frozenset(MIDS) for MIDS in possible_MIDS))
+        print(f"  {disj_val=}, {top_nodes=}, {ok=}")
+
+        for i, MIDS in enumerate(possible_MIDS):
             np_MIDS = to_vector(MIDS, G.number_of_nodes())
-            print(MIDS, np_MIDS)
-            if not check_MIDS(A, np_MIDS, len(MIDS)):
+            A = nx.to_numpy_array(G)
+            n = A.shape[0]
+            disjunction_vec = (A + np.eye(n)) @ np_MIDS
+            print(f"  {i}: {MIDS=}, d_vec={disjunction_vec}")
+            if not ok:
                 pos=nx.spring_layout(G)
                 plt.figure()
                 nx.draw(G, with_labels=True, node_color=np_MIDS, cmap=colormaps["bwr"], pos=pos)
-                plt.figure()
-                Gc = nx.complement(G)
-                nx.draw(Gc, with_labels=True, node_color=np_MIDS, cmap=colormaps["bwr"], pos=pos)
                 plt.show()
 
 
