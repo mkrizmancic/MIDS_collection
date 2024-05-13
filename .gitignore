@@ -197,3 +197,5 @@ cython_debug/
 PyTorch Geometric/pyg_MIDS/
 PyTorch Geometric/Dataset/raw/
 PyTorch Geometric/Dataset/processed/
+PyTorch Geometric/New Dataset/raw/
+PyTorch Geometric/New Dataset/processed/

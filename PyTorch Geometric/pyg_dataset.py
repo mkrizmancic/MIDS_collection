@@ -1,23 +1,33 @@
 import random
 from pathlib import Path
 
+import codetiming
 import matplotlib
 import networkx as nx
+import numpy as np
 import torch
+import torch.multiprocessing as torch_mp
 import torch_geometric.utils as pygUtils
 import Utilities.utils as utils
 import yaml
 from matplotlib import pyplot as plt
 from torch_geometric.data import InMemoryDataset, download_url, extract_zip
 from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
 
+torch_mp.set_sharing_strategy('file_system')
 
 raw_download_url = "https://github.com/mkrizmancic/MIDS_collection/raw/master/PyTorch%20Geometric/Dataset/raw_data.zip"
 
 
 class MIDSdataset(InMemoryDataset):
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, **kwargs):
-        self.raw_included_subdirs = kwargs.get("raw_included_subdirs", None)
+        self.selected_graph_sizes = kwargs.get("selected_graph_sizes", None)
+        self.selected_graph_files = (
+            [f"graphs{size:02d}.txt" for size in self.selected_graph_sizes]
+            if self.selected_graph_sizes is not None
+            else None
+        )
 
         super().__init__(root, transform, pre_transform, pre_filter)
 
@@ -37,10 +47,10 @@ class MIDSdataset(InMemoryDataset):
         raw_dir = Path(self.raw_dir)
         raw_files = []
         with open(raw_dir.parent / "file_list.yaml", "r") as file:
-            raw_dir_structure = yaml.safe_load(file)
-            for subdir in raw_dir_structure:
-                if self.raw_included_subdirs is None or subdir in self.raw_included_subdirs:
-                    raw_files.extend([f"{subdir}/{filename}" for filename in raw_dir_structure[subdir]])
+            raw_file_list = sorted(yaml.safe_load(file))
+            for filename in raw_file_list:
+                if self.selected_graph_files is None or filename in self.selected_graph_files:
+                    raw_files.append(filename)
 
         return raw_files
 
@@ -80,23 +90,57 @@ class MIDSdataset(InMemoryDataset):
     def process(self):
         """Process the raw files into a graph dataset."""
         # Read data into huge `Data` list.
-        data_list = []
+        raw_data_list = []
+        print("  Loading data from files, computing features and labels...")
         with tqdm(total=len(self.raw_file_names)) as pbar:
             for graph_file in self.raw_file_names:
-                data = self.make_data(Path(self.raw_dir) / graph_file)
-                data_list.extend(data)
+                edge_lists_in_graph_file = []
+                with open(Path(self.raw_dir) / graph_file, "r") as f:
+                    for line in f.readlines():
+                        graph_num, edge_list = line.split(": ")
+                        edge_lists_in_graph_file.append(edge_list)
+
+                result = process_map(MIDSdataset.make_data, edge_lists_in_graph_file, chunksize=100, max_workers=8)
+                # unpacked_result = [datapoint for single_graph_data in result for datapoint in single_graph_data]
+                raw_data_list.extend(result)
                 pbar.update(1)
 
+        print("  Converting data to PyG format...")
+        torch_data_list = []
+        for raw_data in tqdm(raw_data_list):
+            torch_data_list.extend(MIDSdataset.make_torch(raw_data))
+        # -> Approach with tqdm multiprocessing wrapper.
+        # torch_data_list = process_map(MIDSdataset.make_torch, raw_data_list, chunksize=100)
+        # -> Approach with torch multiprocessing and manual tqdm.
+        # m_raw_data_list = np.arange(len(raw_data_list))
+        # with torch_mp.Pool(8, maxtasksperchild=10) as pool:
+        #     result = list(tqdm(pool.imap_unordered(MIDSdataset.make_torch, m_raw_data_list, chunksize=10), total=len(raw_data_list)))
+        # torch_data_list = [datapoint for single_graph_data in result for datapoint in single_graph_data]
+        # -> Approach with torch multiprocessing and manual tqdm and shared data structure.
+        # data_indices = np.arange(len(MIDSdataset.raw_data_list))
+        # with torch_mp.Pool(8) as pool:
+        #     result = list(tqdm(pool.imap(MIDSdataset.make_torch, data_indices, chunksize=100), total=len(data_indices)))
+        # torch_data_list = [datapoint for single_graph_data in result for datapoint in single_graph_data]
+        # -> All above approaches fail because of memory issues. Essentially, the problem is that each time an object
+        #    in the input list is accessed, its copy is written to memory, taking up 8x the necessary memory.
+        #    See more below.
+        #    * https://ppwwyyxx.com/blog/2022/Demystify-RAM-Usage-in-Multiprocess-DataLoader/
+        #    * https://github.com/pytorch/pytorch/issues/13246#issuecomment-445446603
+        #    * https://github.com/pytorch/pytorch/issues/13246#issuecomment-905703662
+        #    * https://stackoverflow.com/questions/5549190/is-shared-readonly-data-copied-to-different-processes-for-multiprocessing/5550156#5550156
+        #    * https://stackoverflow.com/questions/10721915/shared-memory-objects-in-multiprocessing/10724332#10724332
+
         if self.pre_filter is not None:
-            data_list = [data for data in data_list if self.pre_filter(data)]
+            torch_data_list = [data for data in torch_data_list if self.pre_filter(data)]
 
         if self.pre_transform is not None:
-            data_list = [self.pre_transform(data) for data in data_list]
+            torch_data_list = [self.pre_transform(data) for data in torch_data_list]
 
-        data, slices = self.collate(data_list)
+        data, slices = self.collate(torch_data_list)
         torch.save((data, slices), self.processed_paths[0])
 
-    def make_data(self, graph_file):
+    @staticmethod
+    def make_data(edge_list):
         """Create a PyG data object from a graph file."""
         # Load the graph from the file.
         # We assume that the index of the nodes is the same as the node label.
@@ -104,7 +148,9 @@ class MIDSdataset(InMemoryDataset):
         # edgelist. For example, if the edgelist is [(1, 3), (2, 3)], the order
         # of the nodes will be [1, 3, 2]. This interferes with the adjacency
         # matrix ordering.
-        G_init = nx.read_edgelist(graph_file, nodetype=int)
+        edges = [tuple(map(lambda x: int(x) - 1, edge.split(','))) for edge in edge_list.split('; ')]
+
+        G_init = nx.from_edgelist(edges)
         G = nx.Graph()
         G.add_nodes_from(sorted(G_init.nodes))
         G.add_edges_from(G_init.edges)
@@ -133,12 +179,18 @@ class MIDSdataset(InMemoryDataset):
         # for node in G.nodes():
         #     G.nodes[node]["betweenness_centrality"] = between_cent[node]
 
-        torch_G = pygUtils.from_networkx(G, group_node_attrs=list(feature_functions.keys()))
         true_labels = MIDSdataset.get_labels(utils.find_MIDS(G), G.number_of_nodes())
+
+        return G, true_labels
+
+    @staticmethod
+    def make_torch(raw_data):
+        G, true_labels = raw_data
+        torch_G = pygUtils.from_networkx(G, group_node_attrs="all")
         data = []
         for labels in true_labels:
             data.append(torch_G.clone())
-            data[-1].y = labels
+            data[-1].y = torch.from_numpy(labels)
 
         return data
 
@@ -146,7 +198,7 @@ class MIDSdataset(InMemoryDataset):
     def get_labels(mids, num_nodes):
         # Encode found cliques as support vectors.
         for i, nodes in enumerate(mids):
-            mids[i] = torch.zeros(num_nodes)
+            mids[i] = np.zeros(num_nodes)
             mids[i][nodes] = 1
 
         return mids
@@ -178,10 +230,11 @@ def inspect_dataset(dataset, num_graphs=1):
 
 
 def main():
-    root = Path(__file__).parent / "Dataset"
-    raw_included_subdirs = None
+    root = Path(__file__).parent / "New Dataset"
+    selected_graph_sizes = [9]
 
-    dataset = MIDSdataset(root, raw_included_subdirs=raw_included_subdirs)
+    with codetiming.Timer():
+        dataset = MIDSdataset(root, selected_graph_sizes=selected_graph_sizes)
 
     print()
     print(f"Dataset: {dataset}:")
