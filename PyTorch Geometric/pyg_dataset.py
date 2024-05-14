@@ -1,6 +1,7 @@
 import random
 from pathlib import Path
 
+import codetiming
 import matplotlib
 import networkx as nx
 import torch
@@ -11,13 +12,17 @@ from matplotlib import pyplot as plt
 from torch_geometric.data import InMemoryDataset, download_url, extract_zip
 from tqdm import tqdm
 
-
 raw_download_url = "https://github.com/mkrizmancic/MIDS_collection/raw/master/PyTorch%20Geometric/Dataset/raw_data.zip"
 
 
 class MIDSdataset(InMemoryDataset):
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, **kwargs):
-        self.raw_included_subdirs = kwargs.get("raw_included_subdirs", None)
+        self.selected_graph_sizes = kwargs.get("selected_graph_sizes", None)
+        self.selected_graph_files = (
+            [f"graphs{size:02d}.txt" for size in self.selected_graph_sizes]
+            if self.selected_graph_sizes is not None
+            else None
+        )
 
         super().__init__(root, transform, pre_transform, pre_filter)
 
@@ -37,10 +42,10 @@ class MIDSdataset(InMemoryDataset):
         raw_dir = Path(self.raw_dir)
         raw_files = []
         with open(raw_dir.parent / "file_list.yaml", "r") as file:
-            raw_dir_structure = yaml.safe_load(file)
-            for subdir in raw_dir_structure:
-                if self.raw_included_subdirs is None or subdir in self.raw_included_subdirs:
-                    raw_files.extend([f"{subdir}/{filename}" for filename in raw_dir_structure[subdir]])
+            raw_file_list = sorted(yaml.safe_load(file))
+            for filename in raw_file_list:
+                if self.selected_graph_files is None or filename in self.selected_graph_files:
+                    raw_files.append(filename)
 
         return raw_files
 
@@ -81,11 +86,14 @@ class MIDSdataset(InMemoryDataset):
         """Process the raw files into a graph dataset."""
         # Read data into huge `Data` list.
         data_list = []
-        with tqdm(total=len(self.raw_file_names)) as pbar:
-            for graph_file in self.raw_file_names:
-                data = self.make_data(Path(self.raw_dir) / graph_file)
-                data_list.extend(data)
-                pbar.update(1)
+        with tqdm(self.raw_file_names) as files_w_progress:
+            for graph_file in files_w_progress:
+                files_w_progress.set_description(f"Processing {graph_file}")
+                with open(Path(self.raw_dir) / graph_file, "r") as f:
+                    for line in tqdm(f.readlines()):
+                        graph_num, edge_list = line.split(": ")
+                        data = self.make_data(edge_list)
+                        data_list.extend(data)
 
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
@@ -96,7 +104,7 @@ class MIDSdataset(InMemoryDataset):
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
 
-    def make_data(self, graph_file):
+    def make_data(self, edge_list):
         """Create a PyG data object from a graph file."""
         # Load the graph from the file.
         # We assume that the index of the nodes is the same as the node label.
@@ -104,7 +112,9 @@ class MIDSdataset(InMemoryDataset):
         # edgelist. For example, if the edgelist is [(1, 3), (2, 3)], the order
         # of the nodes will be [1, 3, 2]. This interferes with the adjacency
         # matrix ordering.
-        G_init = nx.read_edgelist(graph_file, nodetype=int)
+        edges = [tuple(map(lambda x: int(x) - 1, edge.split(','))) for edge in edge_list.split('; ')]
+
+        G_init = nx.from_edgelist(edges)
         G = nx.Graph()
         G.add_nodes_from(sorted(G_init.nodes))
         G.add_edges_from(G_init.edges)
@@ -179,9 +189,10 @@ def inspect_dataset(dataset, num_graphs=1):
 
 def main():
     root = Path(__file__).parent / "Dataset"
-    raw_included_subdirs = None
+    selected_graph_sizes = None
 
-    dataset = MIDSdataset(root, raw_included_subdirs=raw_included_subdirs)
+    with codetiming.Timer():
+        dataset = MIDSdataset(root, selected_graph_sizes=selected_graph_sizes)
 
     print()
     print(f"Dataset: {dataset}:")
