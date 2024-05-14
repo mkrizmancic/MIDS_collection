@@ -7,26 +7,26 @@ import networkx as nx
 import torch
 import torch_geometric.utils as pygUtils
 import Utilities.utils as utils
-import yaml
 from matplotlib import pyplot as plt
 from torch_geometric.data import InMemoryDataset, download_url, extract_zip
 from tqdm import tqdm
+
+from my_graphs_dataset import GraphLoader
 
 raw_download_url = "https://github.com/mkrizmancic/MIDS_collection/raw/master/PyTorch%20Geometric/Dataset/raw_data.zip"
 
 
 class MIDSdataset(InMemoryDataset):
-    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, **kwargs):
-        self.selected_graph_sizes = kwargs.get("selected_graph_sizes", None)
-        self.selected_graph_files = (
-            [f"graphs{size:02d}.txt" for size in self.selected_graph_sizes]
-            if self.selected_graph_sizes is not None
-            else None
-        )
+    def __init__(self, root, loader: GraphLoader, transform=None, pre_transform=None, pre_filter=None, **kwargs):
+        self.loader = loader
 
         super().__init__(root, transform, pre_transform, pre_filter)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_dir(self):
+        return str(self.loader.raw_files_dir.resolve())
 
     @property
     def raw_file_names(self):
@@ -39,15 +39,7 @@ class MIDSdataset(InMemoryDataset):
         return the list of raw file names that will be used in the process
         method.
         """
-        raw_dir = Path(self.raw_dir)
-        raw_files = []
-        with open(raw_dir.parent / "file_list.yaml", "r") as file:
-            raw_file_list = sorted(yaml.safe_load(file))
-            for filename in raw_file_list:
-                if self.selected_graph_files is None or filename in self.selected_graph_files:
-                    raw_files.append(filename)
-
-        return raw_files
+        return self.loader.raw_file_names
 
     @property
     def processed_file_names(self):
@@ -91,8 +83,8 @@ class MIDSdataset(InMemoryDataset):
                 files_w_progress.set_description(f"Processing {graph_file}")
                 with open(Path(self.raw_dir) / graph_file, "r") as f:
                     for line in tqdm(f.readlines()):
-                        graph_num, edge_list = line.split(": ")
-                        data = self.make_data(edge_list)
+                        graph = self.loader.load_graph(line)  # TODO: Make everything load from the loader and filter the number of loaded graphs.
+                        data = self.make_data(graph)
                         data_list.extend(data)
 
         if self.pre_filter is not None:
@@ -104,20 +96,8 @@ class MIDSdataset(InMemoryDataset):
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
 
-    def make_data(self, edge_list):
-        """Create a PyG data object from a graph file."""
-        # Load the graph from the file.
-        # We assume that the index of the nodes is the same as the node label.
-        # By default, networkx adds the nodes in the order they are found in the
-        # edgelist. For example, if the edgelist is [(1, 3), (2, 3)], the order
-        # of the nodes will be [1, 3, 2]. This interferes with the adjacency
-        # matrix ordering.
-        edges = [tuple(map(lambda x: int(x) - 1, edge.split(','))) for edge in edge_list.split('; ')]
-
-        G_init = nx.from_edgelist(edges)
-        G = nx.Graph()
-        G.add_nodes_from(sorted(G_init.nodes))
-        G.add_edges_from(G_init.edges)
+    def make_data(self, G):
+        """Create a PyG data object from a graph object."""
 
         # Define features in use.
         feature_functions = {
@@ -190,9 +170,10 @@ def inspect_dataset(dataset, num_graphs=1):
 def main():
     root = Path(__file__).parent / "Dataset"
     selected_graph_sizes = None
+    loader = GraphLoader(selection=selected_graph_sizes)
 
     with codetiming.Timer():
-        dataset = MIDSdataset(root, selected_graph_sizes=selected_graph_sizes)
+        dataset = MIDSdataset(root, loader)
 
     print()
     print(f"Dataset: {dataset}:")
