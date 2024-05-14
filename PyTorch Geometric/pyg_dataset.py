@@ -101,14 +101,14 @@ class MIDSdataset(InMemoryDataset):
                         edge_lists_in_graph_file.append(edge_list)
 
                 result = process_map(MIDSdataset.make_data, edge_lists_in_graph_file, chunksize=100, max_workers=8)
-                # unpacked_result = [datapoint for single_graph_data in result for datapoint in single_graph_data]
-                raw_data_list.extend(result)
+                unpacked_result = [datapoint for single_graph_data in result for datapoint in single_graph_data]
+                raw_data_list.extend(unpacked_result)
                 pbar.update(1)
 
         print("  Converting data to PyG format...")
         torch_data_list = []
         for raw_data in tqdm(raw_data_list):
-            torch_data_list.extend(MIDSdataset.make_torch(raw_data))
+            torch_data_list.append(MIDSdataset.make_torch(raw_data))
         # -> Approach with tqdm multiprocessing wrapper.
         # torch_data_list = process_map(MIDSdataset.make_torch, raw_data_list, chunksize=100)
         # -> Approach with torch multiprocessing and manual tqdm.
@@ -181,18 +181,14 @@ class MIDSdataset(InMemoryDataset):
 
         true_labels = MIDSdataset.get_labels(utils.find_MIDS(G), G.number_of_nodes())
 
-        return G, true_labels
+        return [(G, label) for label in true_labels]
 
     @staticmethod
     def make_torch(raw_data):
-        G, true_labels = raw_data
+        G, label = raw_data
         torch_G = pygUtils.from_networkx(G, group_node_attrs="all")
-        data = []
-        for labels in true_labels:
-            data.append(torch_G.clone())
-            data[-1].y = torch.from_numpy(labels)
-
-        return data
+        torch_G.y = torch.from_numpy(label)
+        return torch_G
 
     @staticmethod
     def get_labels(mids, num_nodes):
@@ -231,7 +227,7 @@ def inspect_dataset(dataset, num_graphs=1):
 
 def main():
     root = Path(__file__).parent / "New Dataset"
-    selected_graph_sizes = [9]
+    selected_graph_sizes = None
 
     with codetiming.Timer():
         dataset = MIDSdataset(root, selected_graph_sizes=selected_graph_sizes)
