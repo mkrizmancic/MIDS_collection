@@ -7,17 +7,15 @@ import networkx as nx
 import torch
 import torch_geometric.utils as pygUtils
 import Utilities.utils as utils
+import yaml
 from matplotlib import pyplot as plt
 from torch_geometric.data import InMemoryDataset, download_url, extract_zip
-from tqdm import tqdm
 
-from my_graphs_dataset import GraphLoader
-
-raw_download_url = "https://github.com/mkrizmancic/MIDS_collection/raw/master/PyTorch%20Geometric/Dataset/raw_data.zip"
+from my_graphs_dataset import GraphDataset
 
 
 class MIDSdataset(InMemoryDataset):
-    def __init__(self, root, loader: GraphLoader, transform=None, pre_transform=None, pre_filter=None, **kwargs):
+    def __init__(self, root, loader: GraphDataset, transform=None, pre_transform=None, pre_filter=None, **kwargs):
         self.loader = loader
 
         super().__init__(root, transform, pre_transform, pre_filter)
@@ -39,7 +37,9 @@ class MIDSdataset(InMemoryDataset):
         return the list of raw file names that will be used in the process
         method.
         """
-        return self.loader.raw_file_names
+        with open(Path(self.root) / "file_list.yaml", "r") as file:
+            raw_file_list = sorted(yaml.safe_load(file))
+        return raw_file_list
 
     @property
     def processed_file_names(self):
@@ -62,30 +62,18 @@ class MIDSdataset(InMemoryDataset):
     def download(self):
         """Automatically download raw files if missing."""
         # TODO: Should check and download only missing files.
-
-        zip_file = Path(self.root) / "raw_data.zip"
-
-        # Delete the exising zip file.
-        zip_file.unlink(missing_ok=True)
-
-        # Download the raw files using the helper function.
-        download_url(raw_download_url, self.root, filename="raw_data.zip")
-
-        # Unzip the downloaded files.
-        extract_zip(str(zip_file.resolve()), self.raw_dir)
+        # zip_file = Path(self.root) / "raw_data.zip"
+        # zip_file.unlink(missing_ok=True)  # Delete the exising zip file.
+        # download_url(raw_download_url, self.root, filename="raw_data.zip")
+        # extract_zip(str(zip_file.resolve()), self.raw_dir)
+        raise NotImplementedError("Automatic download is not implemented yet.")
 
     def process(self):
         """Process the raw files into a graph dataset."""
         # Read data into huge `Data` list.
         data_list = []
-        with tqdm(self.raw_file_names) as files_w_progress:
-            for graph_file in files_w_progress:
-                files_w_progress.set_description(f"Processing {graph_file}")
-                with open(Path(self.raw_dir) / graph_file, "r") as f:
-                    for line in tqdm(f.readlines()):
-                        graph = self.loader.load_graph(line)  # TODO: Make everything load from the loader and filter the number of loaded graphs.
-                        data = self.make_data(graph)
-                        data_list.extend(data)
+        for graph in self.loader.graphs(batch_size=1):
+            data_list.extend(self.make_data(graph))
 
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
@@ -169,8 +157,15 @@ def inspect_dataset(dataset, num_graphs=1):
 
 def main():
     root = Path(__file__).parent / "Dataset"
-    selected_graph_sizes = None
-    loader = GraphLoader(selection=selected_graph_sizes)
+    selected_graph_sizes = {3:  -1,
+                            4:  -1,
+                            5:  -1,
+                            6:  -1,
+                            7:  -1,
+                            8:  -1,
+                            9:  100000,
+                            10: 100000}
+    loader = GraphDataset(selection=selected_graph_sizes)
 
     with codetiming.Timer():
         dataset = MIDSdataset(root, loader)
