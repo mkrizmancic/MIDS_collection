@@ -10,23 +10,21 @@ import Utilities.utils as utils
 import yaml
 from matplotlib import pyplot as plt
 from torch_geometric.data import InMemoryDataset, download_url, extract_zip
-from tqdm import tqdm
 
-raw_download_url = "https://github.com/mkrizmancic/MIDS_collection/raw/master/PyTorch%20Geometric/Dataset/raw_data.zip"
+from my_graphs_dataset import GraphDataset
 
 
 class MIDSdataset(InMemoryDataset):
-    def __init__(self, root, transform=None, pre_transform=None, pre_filter=None, **kwargs):
-        self.selected_graph_sizes = kwargs.get("selected_graph_sizes", None)
-        self.selected_graph_files = (
-            [f"graphs{size:02d}.txt" for size in self.selected_graph_sizes]
-            if self.selected_graph_sizes is not None
-            else None
-        )
+    def __init__(self, root, loader: GraphDataset, transform=None, pre_transform=None, pre_filter=None, **kwargs):
+        self.loader = loader
 
         super().__init__(root, transform, pre_transform, pre_filter)
 
         self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_dir(self):
+        return str(self.loader.raw_files_dir.resolve())
 
     @property
     def raw_file_names(self):
@@ -39,15 +37,9 @@ class MIDSdataset(InMemoryDataset):
         return the list of raw file names that will be used in the process
         method.
         """
-        raw_dir = Path(self.raw_dir)
-        raw_files = []
-        with open(raw_dir.parent / "file_list.yaml", "r") as file:
+        with open(Path(self.root) / "file_list.yaml", "r") as file:
             raw_file_list = sorted(yaml.safe_load(file))
-            for filename in raw_file_list:
-                if self.selected_graph_files is None or filename in self.selected_graph_files:
-                    raw_files.append(filename)
-
-        return raw_files
+        return raw_file_list
 
     @property
     def processed_file_names(self):
@@ -70,30 +62,18 @@ class MIDSdataset(InMemoryDataset):
     def download(self):
         """Automatically download raw files if missing."""
         # TODO: Should check and download only missing files.
-
-        zip_file = Path(self.root) / "raw_data.zip"
-
-        # Delete the exising zip file.
-        zip_file.unlink(missing_ok=True)
-
-        # Download the raw files using the helper function.
-        download_url(raw_download_url, self.root, filename="raw_data.zip")
-
-        # Unzip the downloaded files.
-        extract_zip(str(zip_file.resolve()), self.raw_dir)
+        # zip_file = Path(self.root) / "raw_data.zip"
+        # zip_file.unlink(missing_ok=True)  # Delete the exising zip file.
+        # download_url(raw_download_url, self.root, filename="raw_data.zip")
+        # extract_zip(str(zip_file.resolve()), self.raw_dir)
+        raise NotImplementedError("Automatic download is not implemented yet.")
 
     def process(self):
         """Process the raw files into a graph dataset."""
         # Read data into huge `Data` list.
         data_list = []
-        with tqdm(self.raw_file_names) as files_w_progress:
-            for graph_file in files_w_progress:
-                files_w_progress.set_description(f"Processing {graph_file}")
-                with open(Path(self.raw_dir) / graph_file, "r") as f:
-                    for line in tqdm(f.readlines()):
-                        graph_num, edge_list = line.split(": ")
-                        data = self.make_data(edge_list)
-                        data_list.extend(data)
+        for graph in self.loader.graphs(batch_size=1):
+            data_list.extend(self.make_data(graph))
 
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
@@ -104,20 +84,8 @@ class MIDSdataset(InMemoryDataset):
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
 
-    def make_data(self, edge_list):
-        """Create a PyG data object from a graph file."""
-        # Load the graph from the file.
-        # We assume that the index of the nodes is the same as the node label.
-        # By default, networkx adds the nodes in the order they are found in the
-        # edgelist. For example, if the edgelist is [(1, 3), (2, 3)], the order
-        # of the nodes will be [1, 3, 2]. This interferes with the adjacency
-        # matrix ordering.
-        edges = [tuple(map(lambda x: int(x) - 1, edge.split(','))) for edge in edge_list.split('; ')]
-
-        G_init = nx.from_edgelist(edges)
-        G = nx.Graph()
-        G.add_nodes_from(sorted(G_init.nodes))
-        G.add_edges_from(G_init.edges)
+    def make_data(self, G):
+        """Create a PyG data object from a graph object."""
 
         # Define features in use.
         feature_functions = {
@@ -189,10 +157,18 @@ def inspect_dataset(dataset, num_graphs=1):
 
 def main():
     root = Path(__file__).parent / "Dataset"
-    selected_graph_sizes = None
+    selected_graph_sizes = {3:  -1,
+                            4:  -1,
+                            5:  -1,
+                            6:  -1,
+                            7:  -1,
+                            8:  -1,
+                            9:  100000,
+                            10: 100000}
+    loader = GraphDataset(selection=selected_graph_sizes)
 
     with codetiming.Timer():
-        dataset = MIDSdataset(root, selected_graph_sizes=selected_graph_sizes)
+        dataset = MIDSdataset(root, loader)
 
     print()
     print(f"Dataset: {dataset}:")

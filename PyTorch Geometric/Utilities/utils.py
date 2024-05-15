@@ -1,16 +1,21 @@
-from pathlib import Path
-
 import networkx as nx
 import numpy as np
 from matplotlib import colormaps
 from matplotlib import pyplot as plt
 
+from my_graphs_dataset import GraphDataset
+
 
 def find_MIDS(G):
-    # Minimum Independent Dominating Set == Smallest Maximal Independent Set
-    # Maximal Independent Set == Maximal Clique of the complement
-    # ===
-    # Minimum Independent Dominating Set == Smallest Maximal Clique of the complement
+    """
+    Find all Minimum Independent Dominating Sets in a graph G.
+
+    Uses Bron-Kerbosch algorithm to find all maximal cliques in the complement of G.
+      Minimum Independent Dominating Set == Smallest Maximal Independent Set
+      Maximal Independent Set == Maximal Clique of the complement
+      ===
+      Minimum Independent Dominating Set == Smallest Maximal Clique of the complement
+    """
     Gc = nx.complement(G)
     min_size = len(Gc)
     min_cliques = []
@@ -26,6 +31,8 @@ def find_MIDS(G):
 
 def check_MIDS(A, candidate, target_value):
     """
+    Check if the candidate set is a MIDS.
+
     Args:
         - A: adjacency matrix
         - candidate: node labels that are candidate for MIDS (data.y)
@@ -57,6 +64,7 @@ def check_MIDS(A, candidate, target_value):
 
 
 def disjunction_value(G):
+    """Calculate the disjunction value of each node in the graph G."""
     A = nx.to_numpy_array(G)
     nodes = list(G.nodes)
     n = A.shape[0]
@@ -65,67 +73,33 @@ def disjunction_value(G):
     return {nodes[i]: s[i] for i in range(n)}
 
 
-def load_graph(graph_file):
-    G_init = nx.read_edgelist(graph_file, nodetype=int)
-    G = nx.Graph()
-    G.add_nodes_from(sorted(G_init.nodes))
-    G.add_edges_from(G_init.edges)
-    return G
-
-
 def test_find_MIDS():
+    """Test the MIDS finding algorithm."""
     def to_vector(nodes, num_nodes):
         # Encode found cliques as support vectors.
         mids = np.zeros(num_nodes)
         mids[nodes] = 1
         return mids
 
-    graph_files_dir = Path("/home/marko/PROJECTS/MIDS_collection/PyTorch Geometric/Dataset/raw/5_nodes")
-    for graph_file in graph_files_dir.glob("*.txt"):
-        print(graph_file.stem)
-        # if graph_file.stem != "G8,1437":
-        #     continue
-        G = load_graph(graph_file)
+    loader = GraphDataset()
+
+    for G in loader.graphs():
+        A = nx.to_numpy_array(G)
         # nx.draw(G, with_labels=True)
         # plt.show()
         possible_MIDS = find_MIDS(G)
-        disj_val = disjunction_value(G)
 
-        len_MIDS = len(possible_MIDS[0])
-        top_nodes = [node for node in sorted(disj_val, key=lambda x: disj_val[x], reverse=True)][:len_MIDS]
-        ok = set(top_nodes) in set((frozenset(MIDS) for MIDS in possible_MIDS))
-        print(f"  {disj_val=}, {top_nodes=}, {ok=}")
-
-        for i, MIDS in enumerate(possible_MIDS):
+        for MIDS in possible_MIDS:
             np_MIDS = to_vector(MIDS, G.number_of_nodes())
-            A = nx.to_numpy_array(G)
-            n = A.shape[0]
-            disjunction_vec = (A + np.eye(n)) @ np_MIDS
-            print(f"  {i}: {MIDS=}, d_vec={disjunction_vec}")
-            if not ok:
-                pos=nx.spring_layout(G)
+            if not check_MIDS(A, np_MIDS, len(MIDS)):
+                print(MIDS, np_MIDS)
+                pos = nx.spring_layout(G)
                 plt.figure()
                 nx.draw(G, with_labels=True, node_color=np_MIDS, cmap=colormaps["bwr"], pos=pos)
+                plt.figure()
+                Gc = nx.complement(G)
+                nx.draw(Gc, with_labels=True, node_color=np_MIDS, cmap=colormaps["bwr"], pos=pos)
                 plt.show()
-
-
-def test_find_cliques():
-    def to_vector(nodes, num_nodes):
-        # Encode found cliques as support vectors.
-        clique = np.zeros(num_nodes)
-        clique[nodes] = 1
-        return clique
-
-    graph_file = Path("/home/marko/PROJECTS/MIDS_collection/PyTorch Geometric/Dataset/raw/8_nodes/G8,1437.txt")
-    G = nx.read_edgelist(graph_file, nodetype=int)
-    nx.draw(G, with_labels=True)
-    plt.show()
-    Gc = nx.complement(G)
-    for nodes in nx.find_cliques(Gc):
-        np_nodes = to_vector(nodes, Gc.number_of_nodes())
-        print(nodes, np_nodes)
-        nx.draw(Gc, with_labels=True, node_color=np_nodes, cmap=colormaps["bwr"])
-        plt.show()
 
 
 if __name__ == "__main__":
