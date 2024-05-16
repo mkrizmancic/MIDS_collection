@@ -5,7 +5,7 @@ import networkx as nx
 import numpy as np
 from matplotlib import colormaps
 from matplotlib import pyplot as plt
-from my_graphs_dataset.loader import GraphDataset
+from my_graphs_dataset import GraphDataset
 from tqdm.contrib.concurrent import process_map
 
 
@@ -108,7 +108,7 @@ def worker(graph):
 
 def test_disjunction_metric():
     display_results = False
-    loader = GraphDataset(selection=[])
+    loader = GraphDataset(selection={3: -1, 4: -1, 5: -1, 6: -1, 7: -1, 8: -1, 9: 100_000, 10: 100_000})
     all_results = []
 
     for graphs in loader.graphs(raw=True, batch_size="auto"):
