@@ -2,6 +2,7 @@ import itertools
 
 import codetiming
 import networkx as nx
+from networkx import draw
 import numpy as np
 from matplotlib import colormaps
 from matplotlib import pyplot as plt
@@ -106,38 +107,58 @@ def worker(graph):
     return graph
 
 
+def draw_result(res, show=False):
+    if not show:
+        return
+
+    G = GraphDataset.parse_graph6(res)
+    possible_MIDS = find_MIDS(G)
+    disjunction_vec = disjunction_vector(G)
+
+    print(f"Graph {res}:")
+    for i, MIDS in enumerate(possible_MIDS):
+        np_MIDS = to_vector(MIDS, G.number_of_nodes())
+        print(f"  {i}: {MIDS=}, d_vec={disjunction_vec}")
+
+        pos = nx.spring_layout(G)
+        plt.figure()
+        nx.draw(G, with_labels=True, node_color=np_MIDS, cmap=colormaps["bwr"], pos=pos)
+        plt.show()
+
+
 def test_disjunction_metric():
     display_results = False
-    loader = GraphDataset(selection={3: -1, 4: -1, 5: -1, 6: -1, 7: -1, 8: -1, 9: 100_000, 10: 100_000})
-    all_results = []
+    selection = {3: -1, 4: -1, 5: -1, 6: -1, 7: -1, 8: -1, 9: 100_000, 10: 100_000}
+    loader = GraphDataset(selection)
+
+    graph_size = list(selection)
+    correct = []
+    total = []
 
     for graphs in loader.graphs(raw=True, batch_size="auto"):
         result = process_map(worker, graphs, chunksize=1000)
-        all_results.extend(result)
 
-    wrong = 0
-    for res in all_results:
-        if res:
-            wrong += 1
+        wrong = 0
+        for res in result:
+            if res:
+                wrong += 1
+                draw_result(res, display_results)
 
-            if display_results:
-                G = GraphDataset.parse_graph6(res)
-                possible_MIDS = find_MIDS(G)
-                disjunction_vec = disjunction_vector(G)
+        correct.append(len(graphs) - wrong)
+        total.append(len(graphs))
 
-                print(f"Graph {res}:")
-                for i, MIDS in enumerate(possible_MIDS):
-                    np_MIDS = to_vector(MIDS, G.number_of_nodes())
-                    print(f"  {i}: {MIDS=}, d_vec={disjunction_vec}")
+    # Plot results
+    plt.plot(graph_size, np.array(correct) / np.array(total), label="Correct")
+    plt.grid()
+    plt.xlabel("Graph size")
+    plt.ylabel("Accuracy")
+    plt.show()
 
-                    pos = nx.spring_layout(G)
-                    plt.figure()
-                    nx.draw(G, with_labels=True, node_color=np_MIDS, cmap=colormaps["bwr"], pos=pos)
-                    plt.show()
 
-    total = len(all_results)
-    correct = total - wrong
-    print(f"Correct: {correct}/{total} ({correct/total*100:.2f}%)\nWrong: {wrong}")
+    cum_total = sum(total)
+    cum_correct = sum(correct)
+    cum_wrong = cum_total - cum_correct
+    print(f"Correct: {cum_correct}/{cum_total} ({cum_correct/cum_total*100:.2f}%)\nWrong: {cum_wrong}")
 
 
 if __name__ == "__main__":
