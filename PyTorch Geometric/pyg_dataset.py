@@ -73,7 +73,7 @@ class MIDSdataset(InMemoryDataset):
         # Read data into huge `Data` list.
         data_list = []
         for graph in self.loader.graphs(batch_size=1):
-            data_list.extend(self.make_data(graph))
+            data_list.append(self.make_data(graph))
 
         if self.pre_filter is not None:
             data_list = [data for data in data_list if self.pre_filter(data)]
@@ -113,12 +113,14 @@ class MIDSdataset(InMemoryDataset):
 
         torch_G = pygUtils.from_networkx(G, group_node_attrs=list(feature_functions.keys()))
         true_labels = MIDSdataset.get_labels(utils.find_MIDS(G), G.number_of_nodes())
-        data = []
-        for labels in true_labels:
-            data.append(torch_G.clone())
-            data[-1].y = labels
+        # data = []
+        # for labels in true_labels:
+        #     data.append(torch_G.clone())
+        #     data[-1].y = labels
 
-        return data
+        torch_G.y = torch.cat(true_labels)
+
+        return torch_G
 
     @staticmethod
     def get_labels(mids, num_nodes):

@@ -51,7 +51,7 @@ def main():
         print("No solution found.")
 
 
-def optimize(G, problem, goal="D", outputFlag=1):
+def optimize(G, problem, goal="D", outputFlag=1, single_cpu=False):
     A = nx.to_numpy_array(G)
     n = np.size(A, 1)
     A_ = A + np.eye(n)
@@ -64,6 +64,8 @@ def optimize(G, problem, goal="D", outputFlag=1):
     # Create a new model.
     model = gp.Model("MIDS", env=env)
     model.setParam("presolve", 0)
+    if single_cpu:
+        model.setParam('Threads', 1)
 
     # Add variables to the model.
     D = model.addVars(G.nodes, vtype=gp.GRB.BINARY)
@@ -109,7 +111,7 @@ def optimize(G, problem, goal="D", outputFlag=1):
         d=solution,
     )
 
-    return solution, end - start, details
+    return solution, (end - start) * 1000, details
 
 
 if __name__ == "__main__":
